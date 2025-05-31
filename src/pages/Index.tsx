@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TopBar } from '@/components/TopBar';
 import { MainContent } from '@/components/MainContent';
 import { NowPlaying } from '@/components/NowPlaying';
@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, Menu, X, SkipBack, SkipForward, Play, Pause,
 import { Button } from '@/components/ui/button';
 import { audioService } from '@/services/audioService';
 import { toast } from "sonner";
+import { normalizeAudioPath } from '@/utils/audioUtils';
 
 // Song mapping for the available audio files
 const songData = {
@@ -72,7 +73,7 @@ const Index = () => {
   const [progress, setProgress] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const [audioErrorCount, setAudioErrorCount] = useState(0);
   const maxRetries = 2;
 
   // Initialize queue on component mount
@@ -148,19 +149,14 @@ const Index = () => {
     
     // Set up error handler for audio loading
     audioService.onError = (message) => {
-      // Show error toast
-      toast.error("Error Playing Audio", {
-        description: "There was a problem loading the audio file. Please try again.",
-        action: {
-          label: "Retry",
-          onClick: () => {
-            if (retryCount < maxRetries && currentSong) {
-              setRetryCount(prev => prev + 1);
-              handleSongSelect(currentSong);
-            }
-          }
-        },
-      });
+      setAudioErrorCount(prev => prev + 1);
+      
+      // Only show error toast if we've had multiple errors
+      if (audioErrorCount > 2) {
+        toast.error("Audio Playback Issue", {
+          description: "There's a problem playing this audio file. Please try another song.",
+        });
+      }
     };
 
     // Initialize audio with the current song
@@ -184,38 +180,33 @@ const Index = () => {
       // Clean up all audio resources
       audioService.cleanup();
     };
-  }, [currentSong, retryCount, maxRetries]);
+  }, [currentSong, audioErrorCount]);
 
-  // Reset retry count when song changes
+  // Reset audio error count when a new song is selected
   useEffect(() => {
-    setRetryCount(0);
+    setAudioErrorCount(0);
   }, [currentSong?.id]);
 
-  const handleSongSelect = (song: any) => {
-    // Map to our audio files if it's one we have
-    let audioSong = song;
+  // Enhanced song selection function
+  const handleSongSelect = useCallback((song: any) => {
+    // Pre-process the audio URL
+    let audioSong = { ...song };
     
     // Try to match by title to our available songs
     Object.values(songData).forEach(availableSong => {
       if (availableSong.title === song.title) {
-        audioSong = { ...song, audioUrl: availableSong.audioUrl };
+        audioSong = { 
+          ...song, 
+          audioUrl: normalizeAudioPath(availableSong.audioUrl) 
+        };
       }
     });
     
-    // Use a try-catch to handle initial errors
-    try {
-      setIsLoading(true);
-      setCurrentSong(audioSong);
-      audioService.play(audioSong);
-      setIsPlaying(true);
-    } catch (error) {
-      console.error("Error selecting song:", error);
-      setIsLoading(false);
-      toast.error("Error Playing Audio", {
-        description: "There was a problem loading the audio file. Please try again."
-      });
-    }
-  };
+    setIsLoading(true);
+    setCurrentSong(audioSong);
+    audioService.play(audioSong);
+    setIsPlaying(true);
+  }, [songData, setIsPlaying, setCurrentSong]);
 
   const handlePlayPause = () => {
     // If this is the first time playing and no song has been loaded yet

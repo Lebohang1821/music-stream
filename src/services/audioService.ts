@@ -20,6 +20,9 @@ class AudioService {
       // Allow crossorigin content for better streaming
       this.audio.crossOrigin = 'anonymous';
       
+      // Add retry mechanism
+      this.maxRetries = 3;
+      
       this.setupAudioEvents();
     }
     return this;
@@ -207,8 +210,19 @@ class AudioService {
     this.audio.load();
   }
 
+  // Add a retry mechanism for loading audio
+  private maxRetries = 3;
+  private retryCount = 0;
+  private lastAttemptedSong: any = null;
+
   play(song: any) {
     if (!this.audio) return;
+    
+    // Reset retry count when loading a new song
+    if (!this.lastAttemptedSong || this.lastAttemptedSong.id !== song.id) {
+      this.retryCount = 0;
+      this.lastAttemptedSong = song;
+    }
     
     // Cancel any previous timeouts
     if (this.bufferingTimeout !== null) {
@@ -223,6 +237,7 @@ class AudioService {
         this.audio.play().catch(err => {
           console.error('Error playing existing audio:', err);
           this.shouldBePlayingWhenReady = false;
+          this.handlePlayError(err, song);
         });
       } else {
         this.shouldBePlayingWhenReady = false;
@@ -253,85 +268,69 @@ class AudioService {
     // Load and prepare to play the new song
     this.currentSong = song;
     
-    // Add cache-busting and range request support
-    const audioUrl = new URL(song.audioUrl, window.location.origin);
-    audioUrl.searchParams.append('_', Date.now().toString());
+    // Make the URL absolute and add cache-busting
+    const baseUrl = window.location.origin;
+    let audioUrl: string;
     
-    this.audio.src = audioUrl.toString();
-    this.audio.load();
+    // Handle both absolute and relative URLs
+    if (song.audioUrl.startsWith('http')) {
+      audioUrl = song.audioUrl;
+    } else {
+      // For local files in development, use relative paths
+      // In production, use the full URL with origin
+      if (window.location.hostname === 'localhost') {
+        audioUrl = song.audioUrl;
+      } else {
+        // Strip leading slash if present
+        const cleanPath = song.audioUrl.startsWith('/') ? song.audioUrl.substring(1) : song.audioUrl;
+        audioUrl = `${baseUrl}/${cleanPath}`;
+      }
+    }
+    
+    // Add cache-busting query param
+    const urlWithCache = new URL(audioUrl, baseUrl);
+    urlWithCache.searchParams.append('_', Date.now().toString());
+    
+    try {
+      this.audio.src = urlWithCache.toString();
+      this.audio.load();
+      
+      // Set up automatic play when buffered, with audio load error handling
+      if (this.shouldBePlayingWhenReady) {
+        this.audio.play().catch((err) => {
+          console.error('Error in initial playback:', err);
+          this.handlePlayError(err, song);
+        });
+      }
+    } catch (err) {
+      console.error('Error setting audio source:', err);
+      this.handlePlayError(err, song);
+    }
   }
   
-  playPrevious() {
-    if (this.queue.length === 0) return;
-    
-    // If we're at the start or within first 3 seconds, go to previous song
-    if (this.currentIndex > 0 && this.audio && this.audio.currentTime > 3) {
-      // If we're past 3 seconds into the song, restart the current song
-      this.audio.currentTime = 0;
-      return;
-    }
-    
-    // Move to previous track
-    this.currentIndex = (this.currentIndex - 1 + this.queue.length) % this.queue.length;
-    const prevSong = this.queue[this.currentIndex];
-    
-    if (prevSong) {
-      this.currentSong = prevSong;
-      if (this.audio) {
-        this.audio.src = prevSong.audioUrl;
-        this.audio.load();
-        this.audio.play();
-        
-        if (this.onSongChange) {
-          this.onSongChange(prevSong);
-        }
-      }
-    }
-  }
-
-  setRepeatMode(repeat: boolean) {
-    this.isRepeatMode = repeat;
-    if (this.audio) {
-      this.audio.loop = repeat;
-    }
-  }
-
-  setShuffleMode(shuffle: boolean) {
-    this.isShuffleMode = shuffle;
-    
-    if (shuffle) {
-      // Save the original queue if not saved already
-      if (this.originalQueue.length === 0) {
-        this.originalQueue = [...this.queue];
-      }
+  // Handle play errors with retry mechanism
+  private handlePlayError(error: any, song: any) {
+    if (this.retryCount < this.maxRetries) {
+      this.retryCount++;
+      console.log(`Retrying playback (${this.retryCount}/${this.maxRetries})...`);
       
-      // Shuffle the queue while keeping current song at current index
-      const currentSong = this.queue[this.currentIndex];
-      const remainingItems = this.queue.filter(song => song.id !== currentSong.id);
-      
-      // Fisher-Yates shuffle algorithm
-      for (let i = remainingItems.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [remainingItems[i], remainingItems[j]] = [remainingItems[j], remainingItems[i]];
-      }
-      
-      // Put current song back at current index
-      this.queue = [...remainingItems.slice(0, this.currentIndex), 
-                    currentSong,
-                    ...remainingItems.slice(this.currentIndex)];
+      // Short delay before retry
+      setTimeout(() => {
+        // Try with a modified URL to bypass cache
+        this.play(song);
+      }, 1000);
     } else {
-      // Restore original queue
-      if (this.originalQueue.length > 0) {
-        const currentSong = this.queue[this.currentIndex];
-        this.queue = [...this.originalQueue];
-        // Find the current song in the original queue
-        this.currentIndex = this.queue.findIndex(song => song.id === currentSong.id);
-        if (this.currentIndex === -1) this.currentIndex = 0;
+      this.isLoadingState = false;
+      if (this.onLoadingChange) {
+        this.onLoadingChange(false);
+      }
+      if (this.onError) {
+        this.onError(`Failed to play audio after ${this.maxRetries} attempts. Please try again later.`);
       }
     }
   }
 
-  // Update the playNext method to handle repeat
+  // Override default playNext to include error handling
   playNext() {
     if (this.queue.length === 0) return;
     
@@ -339,7 +338,10 @@ class AudioService {
       // In repeat mode, just restart the current song
       if (this.audio) {
         this.audio.currentTime = 0;
-        this.audio.play();
+        this.audio.play().catch(err => {
+          console.error('Error in repeat mode:', err);
+          this.handlePlayError(err, this.currentSong);
+        });
       }
       return;
     }
@@ -349,11 +351,36 @@ class AudioService {
     const nextSong = this.queue[this.currentIndex];
     
     if (nextSong) {
+      // Reset retry count for new song
+      this.retryCount = 0;
+      this.lastAttemptedSong = nextSong;
+      
       this.currentSong = nextSong;
       if (this.audio) {
-        this.audio.src = nextSong.audioUrl;
+        // Make the URL absolute and add cache-busting
+        const baseUrl = window.location.origin;
+        let audioUrl: string;
+        
+        if (nextSong.audioUrl.startsWith('http')) {
+          audioUrl = nextSong.audioUrl;
+        } else {
+          if (window.location.hostname === 'localhost') {
+            audioUrl = nextSong.audioUrl;
+          } else {
+            const cleanPath = nextSong.audioUrl.startsWith('/') ? nextSong.audioUrl.substring(1) : nextSong.audioUrl;
+            audioUrl = `${baseUrl}/${cleanPath}`;
+          }
+        }
+        
+        const urlWithCache = new URL(audioUrl, baseUrl);
+        urlWithCache.searchParams.append('_', Date.now().toString());
+        
+        this.audio.src = urlWithCache.toString();
         this.audio.load();
-        this.audio.play();
+        this.audio.play().catch(err => {
+          console.error('Error playing next song:', err);
+          this.handlePlayError(err, nextSong);
+        });
         
         if (this.onSongChange) {
           this.onSongChange(nextSong);
