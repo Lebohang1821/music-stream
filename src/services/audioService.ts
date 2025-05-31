@@ -2,10 +2,11 @@ class AudioService {
   private audio: HTMLAudioElement | null = null;
   private currentSong: any = null;
   private queue: any[] = [];
-  private originalQueue: any[] = []; // Store original queue for disabling shuffle
+  private originalQueue: any[] = [];
   private currentIndex: number = -1;
   private isShuffleMode: boolean = false;
   private isRepeatMode: boolean = false;
+  private isLoadingState: boolean = false;
 
   initialize() {
     if (!this.audio) {
@@ -17,6 +18,29 @@ class AudioService {
 
   private setupAudioEvents() {
     if (!this.audio) return;
+    
+    // Track loading state
+    this.audio.addEventListener('loadstart', () => {
+      this.isLoadingState = true;
+      if (this.onLoadingChange) {
+        this.onLoadingChange(true);
+      }
+    });
+    
+    this.audio.addEventListener('canplay', () => {
+      this.isLoadingState = false;
+      if (this.onLoadingChange) {
+        this.onLoadingChange(false);
+      }
+    });
+    
+    this.audio.addEventListener('error', () => {
+      this.isLoadingState = false;
+      if (this.onLoadingChange) {
+        this.onLoadingChange(false);
+      }
+      console.error('Audio error occurred');
+    });
     
     this.audio.addEventListener('ended', () => {
       // Auto-play next song when current song ends
@@ -35,9 +59,30 @@ class AudioService {
 
   onTimeUpdate: ((currentTime: number, duration: number) => void) | null = null;
   onSongChange: ((song: any) => void) | null = null;
+  onLoadingChange: ((isLoading: boolean) => void) | null = null;
 
   setQueue(songs: any[]) {
     this.queue = [...songs];
+  }
+
+  // Load a song without playing it
+  loadSong(song: any) {
+    if (!this.audio) return;
+    
+    // Find the song in the queue or add it
+    const songIndex = this.queue.findIndex(s => s.id === song.id);
+    if (songIndex !== -1) {
+      this.currentIndex = songIndex;
+    } else {
+      // If song isn't in the queue, add it
+      this.queue.unshift(song);
+      this.currentIndex = 0;
+    }
+    
+    // Load the song but don't play
+    this.currentSong = song;
+    this.audio.src = song.audioUrl;
+    this.audio.load();
   }
 
   play(song: any) {
@@ -46,7 +91,7 @@ class AudioService {
     // If it's the same song, just toggle play/pause
     if (this.currentSong && this.currentSong.id === song.id) {
       if (this.audio.paused) {
-        this.audio.play();
+        this.audio.play().catch(err => console.error('Error playing audio:', err));
       } else {
         this.audio.pause();
       }
@@ -63,11 +108,23 @@ class AudioService {
       this.currentIndex = 0;
     }
     
+    // Set loading state
+    this.isLoadingState = true;
+    if (this.onLoadingChange) {
+      this.onLoadingChange(true);
+    }
+    
     // Load and play the new song
     this.currentSong = song;
     this.audio.src = song.audioUrl;
     this.audio.load();
-    this.audio.play();
+    this.audio.play().catch(err => {
+      console.error('Error playing audio:', err);
+      this.isLoadingState = false;
+      if (this.onLoadingChange) {
+        this.onLoadingChange(false);
+      }
+    });
   }
 
   playPrevious() {
@@ -217,6 +274,10 @@ class AudioService {
   
   getQueue() {
     return [...this.queue];
+  }
+  
+  isLoading() {
+    return this.isLoadingState;
   }
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Heart, Repeat, Shuffle, Home, Search, Library, Plus, Download } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, Heart, Repeat, Shuffle, Home, Search, Library, Plus, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 
@@ -24,6 +24,7 @@ interface NowPlayingProps {
   onVolumeChange?: (value: number[]) => void;
   onPrevious?: () => void;
   onNext?: () => void;
+  isLoading?: boolean;
 }
 
 const navigationItems = [
@@ -58,7 +59,8 @@ export function NowPlaying({
   onSeek,
   onVolumeChange,
   onPrevious,
-  onNext
+  onNext,
+  isLoading = false
 }: NowPlayingProps) {
   const [volume, setVolume] = useState([75]);
   const [isLiked, setIsLiked] = useState(false);
@@ -78,6 +80,10 @@ export function NowPlaying({
     if (onSeek) {
       onSeek(value);
     }
+  };
+
+  const handlePlayPauseClick = () => {
+    setIsPlaying(!isPlaying);
   };
 
   return (
@@ -187,6 +193,7 @@ export function NowPlaying({
                 size="sm" 
                 className={`text-white/60 hover:text-white hover:bg-white/10 ${isShuffleOn ? 'text-green-500' : ''}`}
                 onClick={() => setIsShuffleOn(!isShuffleOn)}
+                disabled={isLoading}
               >
                 <Shuffle size={16} />
               </Button>
@@ -195,20 +202,29 @@ export function NowPlaying({
                 size="sm" 
                 className="text-white/80 hover:text-white hover:bg-white/10"
                 onClick={onPrevious}
+                disabled={isLoading}
               >
                 <SkipBack size={18} />
               </Button>
               <Button 
                 onClick={() => setIsPlaying(!isPlaying)}
                 className="bg-white text-black hover:bg-white/90 w-8 h-8 rounded-full flex items-center justify-center"
+                disabled={isLoading}
               >
-                {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+                {isLoading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : isPlaying ? (
+                  <Pause size={16} />
+                ) : (
+                  <Play size={16} />
+                )}
               </Button>
               <Button 
                 variant="ghost" 
                 size="sm" 
                 className="text-white/80 hover:text-white hover:bg-white/10"
                 onClick={onNext}
+                disabled={isLoading}
               >
                 <SkipForward size={18} />
               </Button>
@@ -217,6 +233,7 @@ export function NowPlaying({
                 size="sm" 
                 className={`text-white/60 hover:text-white hover:bg-white/10 ${isRepeatOn ? 'text-green-500' : ''}`}
                 onClick={() => setIsRepeatOn(!isRepeatOn)}
+                disabled={isLoading}
               >
                 <Repeat size={16} />
               </Button>

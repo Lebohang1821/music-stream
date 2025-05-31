@@ -4,7 +4,7 @@ import { MainContent } from '@/components/MainContent';
 import { NowPlaying } from '@/components/NowPlaying';
 import { Queue } from '@/components/Queue';
 import { MobilePlayer } from '@/components/MobilePlayer';
-import { ChevronLeft, ChevronRight, Menu, X, SkipBack, SkipForward, Play, Pause } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Menu, X, SkipBack, SkipForward, Play, Pause, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { audioService } from '@/services/audioService';
 
@@ -69,6 +69,7 @@ const Index = () => {
   const [showFullMobilePlayer, setShowFullMobilePlayer] = useState(false);
   const [currentTime, setCurrentTime] = useState("0:00");
   const [progress, setProgress] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Initialize queue on component mount
   useEffect(() => {
@@ -129,6 +130,36 @@ const Index = () => {
     }
   }, [isPlaying]);
 
+  // Initialize audio with current song on component mount
+  useEffect(() => {
+    // Set up audio events for loading tracking
+    audioService.onLoadingChange = (loading) => {
+      setIsLoading(loading);
+    };
+
+    // Initialize audio with the current song
+    if (currentSong && currentSong.audioUrl) {
+      audioService.loadSong(currentSong);
+    }
+    
+    // Set the initial queue with all available songs
+    const allSongs = Object.values(songData);
+    audioService.setQueue(allSongs);
+    
+    // Listen for song changes from the audio service
+    audioService.onSongChange = (song) => {
+      if (song) {
+        setCurrentSong(song);
+        setIsPlaying(true);
+      }
+    };
+    
+    return () => {
+      audioService.onSongChange = null;
+      audioService.onLoadingChange = null;
+    };
+  }, []);
+
   const handleSongSelect = (song: any) => {
     // Map to our audio files if it's one we have
     let audioSong = song;
@@ -140,12 +171,18 @@ const Index = () => {
       }
     });
     
+    setIsLoading(true);
     setCurrentSong(audioSong);
     audioService.play(audioSong);
     setIsPlaying(true);
   };
 
   const handlePlayPause = () => {
+    // If this is the first time playing and no song has been loaded yet
+    if (!audioService.getCurrentSong()) {
+      audioService.loadSong(currentSong);
+    }
+    
     if (isPlaying) {
       audioService.pause();
     } else {
@@ -224,6 +261,7 @@ const Index = () => {
             onVolumeChange={handleVolumeChange}
             onPrevious={handlePrevious}
             onNext={handleNext}
+            isLoading={isLoading}
           />
         </div>
         
@@ -260,7 +298,7 @@ const Index = () => {
         </div>
       </div>
       
-      {/* Mobile player bar */}
+      {/* Mobile player bar with loading indicator */}
       {isMobile && !showFullMobilePlayer && (
         <MobilePlayer 
           currentSong={currentSong}
@@ -270,10 +308,11 @@ const Index = () => {
           progress={progress}
           onPrevious={handlePrevious}
           onNext={handleNext}
+          isLoading={isLoading}
         />
       )}
       
-      {/* Full screen mobile player (conditionally rendered) */}
+      {/* Full screen mobile player with loading indicator */}
       {isMobile && (
         <div className={`fixed inset-0 bg-black/90 backdrop-blur-xl z-40 transition-transform duration-300 ${showFullMobilePlayer ? 'translate-y-0' : 'translate-y-full'}`}>
           <Button
@@ -312,19 +351,28 @@ const Index = () => {
                   variant="ghost" 
                   className="text-white/80 hover:text-white hover:bg-white/10 rounded-full h-12 w-12"
                   onClick={handlePrevious}
+                  disabled={isLoading}
                 >
                   <SkipBack size={24} />
                 </Button>
                 <Button 
                   onClick={handlePlayPause}
                   className="bg-white text-black hover:bg-white/90 h-16 w-16 rounded-full flex items-center justify-center"
+                  disabled={isLoading}
                 >
-                  {isPlaying ? <Pause size={32} /> : <Play size={32} className="ml-1" />}
+                  {isLoading ? (
+                    <Loader2 size={32} className="animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause size={32} /> 
+                  ) : (
+                    <Play size={32} className="ml-1" />
+                  )}
                 </Button>
                 <Button 
                   variant="ghost" 
                   className="text-white/80 hover:text-white hover:bg-white/10 rounded-full h-12 w-12"
                   onClick={handleNext}
+                  disabled={isLoading}
                 >
                   <SkipForward size={24} />
                 </Button>

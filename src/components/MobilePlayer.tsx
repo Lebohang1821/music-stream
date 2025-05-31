@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface MobilePlayerProps {
@@ -16,6 +16,7 @@ interface MobilePlayerProps {
   progress?: number;
   onPrevious?: () => void;
   onNext?: () => void;
+  isLoading?: boolean;
 }
 
 export function MobilePlayer({ 
@@ -25,8 +26,13 @@ export function MobilePlayer({
   onExpand,
   progress = 0,
   onPrevious,
-  onNext
+  onNext,
+  isLoading = false
 }: MobilePlayerProps) {
+  const handlePlayPauseClick = () => {
+    setIsPlaying(!isPlaying);
+  };
+
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-lg border-t border-white/10 py-2 px-3 z-50 md:hidden">
       {/* Progress bar at the top of the player */}
@@ -58,20 +64,29 @@ export function MobilePlayer({
             size="sm" 
             className="text-white/80 hover:text-white hover:bg-white/10 w-8 h-8 p-0"
             onClick={onPrevious}
+            disabled={isLoading}
           >
             <SkipBack size={16} />
           </Button>
           <Button 
-            onClick={() => setIsPlaying(!isPlaying)}
+            onClick={handlePlayPauseClick}
             className="bg-white text-black hover:bg-white/90 w-8 h-8 rounded-full flex items-center justify-center p-0"
+            disabled={isLoading}
           >
-            {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+            {isLoading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause size={14} />
+            ) : (
+              <Play size={14} />
+            )}
           </Button>
           <Button 
             variant="ghost" 
             size="sm" 
             className="text-white/80 hover:text-white hover:bg-white/10 w-8 h-8 p-0"
             onClick={onNext}
+            disabled={isLoading}
           >
             <SkipForward size={16} />
           </Button>
