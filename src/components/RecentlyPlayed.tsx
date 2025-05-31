@@ -1,50 +1,60 @@
-
-import { Play } from 'lucide-react';
+import { Play, MoreHorizontal } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface RecentlyPlayedProps {
-  onSongSelect?: (song: any) => void;
+  onSongSelect: (song: any) => void;
 }
 
-const recentSongs = [
+const recentlyPlayed = [
   {
     id: 1,
-    title: "Am i next (feat. IVson & 1821Beats)",
+    title: "Shawty (feat. Moolah Mali)",
     artist: "M1llion Records",
+    cover: "/lovable-uploads/47dd00ee-9610-41fa-a90f-9ec10a577d4f.png",
     album: "Single",
-    cover: "/lovable-uploads/c8129615-f051-4845-875a-ca371dd8b8cf.png",
-    duration: "3:42"
+    duration: "3:15",
+    audioUrl: "/Shawty.mp3",
+    plays: 325
   },
   {
     id: 2,
-    title: "Shawty (feat. Moolah M...)",
+    title: "Am i next (feat. IVson & 1821Beats)",
     artist: "M1llion Records",
+    cover: "/lovable-uploads/c8129615-f051-4845-875a-ca371dd8b8cf.png",
     album: "Single",
-    cover: "/lovable-uploads/47dd00ee-9610-41fa-a90f-9ec10a577d4f.png",
-    duration: "3:15"
+    duration: "3:42",
+    audioUrl: "/Am-I-Next.mp3",
+    plays: 287
   },
   {
     id: 3,
-    title: "Man In Black (feat. IVso...)",
-    artist: "M1llion Records",
+    title: "Umkami (feat. Dropper & Danger Awuyidede)",
+    artist: "1821BEATs",
+    cover: "/lovable-uploads/44e55910-a21d-4a80-b8d3-db1f3f5272be.png",
     album: "Single",
-    cover: "/lovable-uploads/e4444866-dd49-4eba-8e4b-77f986af7743.png",
-    duration: "2:58"
+    duration: "3:45",
+    audioUrl: "/1821BEATs - Umkami (feat. Danger_M & Dropper).mp3",
+    plays: 214
   },
   {
     id: 4,
-    title: "Hieroglyphs (feat. Seniior 2.0)",
-    artist: "1821BEATs",
-    album: "UnLocked EP",
-    cover: "/lovable-uploads/44e55910-a21d-4a80-b8d3-db1f3f5272be.png",
-    duration: "2:45"
+    title: "Man In Black (feat. IVson)",
+    artist: "M1llion Records",
+    cover: "/lovable-uploads/e4444866-dd49-4eba-8e4b-77f986af7743.png",
+    album: "Single",
+    duration: "3:50",
+    audioUrl: "/Man In Black.mp3",
+    plays: 198
   },
   {
     id: 5,
-    title: "Umkami (feat. Dropper & Danger Awuyidedele)",
+    title: "Hieroglyphs (feat. Seniior 2.0)",
     artist: "1821BEATs",
-    album: "UnLocked EP",
     cover: "/lovable-uploads/44e55910-a21d-4a80-b8d3-db1f3f5272be.png",
-    duration: "3:06"
+    album: "UnLocked",
+    duration: "3:22",
+    audioUrl: "/1821BEATs & Seniiior 2.0 - Hieroglyphs-2.mp3",
+    plays: 176
   }
 ];
 
@@ -59,7 +69,7 @@ export function RecentlyPlayed({ onSongSelect }: RecentlyPlayedProps) {
     <div>
       <h2 className="text-2xl font-bold mb-6">Recently Played</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-        {recentSongs.map((song) => (
+        {recentlyPlayed.map((song) => (
           <div 
             key={song.id}
             className="group bg-white/5 hover:bg-white/10 rounded-xl p-4 transition-all duration-300 cursor-pointer"

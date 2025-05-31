@@ -1,4 +1,3 @@
-
 import { Search, User, ChevronLeft, ChevronRight, LogOut, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,9 +8,10 @@ interface TopBarProps {
   showProfile: boolean;
   setShowProfile: (show: boolean) => void;
   onUpgrade: () => void;
+  isMobile?: boolean;
 }
 
-export function TopBar({ showProfile, setShowProfile, onUpgrade }: TopBarProps) {
+export function TopBar({ showProfile, setShowProfile, onUpgrade, isMobile = false }: TopBarProps) {
   const handleSignOut = () => {
     console.log('Signing out...');
     // Add sign out logic here
@@ -23,33 +23,28 @@ export function TopBar({ showProfile, setShowProfile, onUpgrade }: TopBarProps) 
   };
 
   return (
-    <div className="flex items-center justify-between p-6 bg-black/20 backdrop-blur-xl border-b border-white/10">
-      <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="sm" className="text-white/60 hover:text-white hover:bg-white/10">
-            <ChevronLeft size={20} />
-          </Button>
-          <Button variant="ghost" size="sm" className="text-white/60 hover:text-white hover:bg-white/10">
-            <ChevronRight size={20} />
-          </Button>
-        </div>
-        
+    <div className="h-16 border-b border-white/10 bg-black/20 backdrop-blur-xl flex items-center justify-between px-4 md:px-6">
+      {/* Mobile spacing for menu button */}
+      {isMobile && <div className="w-8"></div>}
+      
+      <div className="flex-1 max-w-md">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" size={18} />
-          <Input 
-            placeholder="Search songs, artists, albums..." 
-            className="pl-10 w-96 bg-white/10 border-white/20 text-white placeholder-white/60 focus:bg-white/20 transition-all duration-200"
+          {/* Search input - hide on smallest screens */}
+          <input
+            type="text"
+            placeholder="Search for songs, artists, albums..."
+            className="w-full bg-white/10 border border-white/20 rounded-full py-2 px-4 text-sm text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 hidden sm:block"
           />
         </div>
       </div>
       
-      <div className="flex items-center space-x-4">
-        <Button 
+      <div className="flex items-center space-x-2 md:space-x-4">
+        <button 
+          className="bg-gradient-to-r from-pink-500 to-purple-600 text-white py-1.5 px-3 md:px-4 rounded-full text-xs md:text-sm font-medium hover:opacity-90 transition-opacity"
           onClick={onUpgrade}
-          className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium px-6"
         >
-          Upgrade to Pro
-        </Button>
+          Upgrade to Premium
+        </button>
         
         <Popover open={showProfile} onOpenChange={setShowProfile}>
           <PopoverTrigger asChild>
@@ -65,8 +60,8 @@ export function TopBar({ showProfile, setShowProfile, onUpgrade }: TopBarProps) 
           <PopoverContent className="w-56 bg-black/90 border-white/20 text-white">
             <div className="space-y-2">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">John Doe</p>
-                <p className="text-xs text-white/70">john@example.com</p>
+                <p className="text-sm font-medium">Jabulani John Ndlovu</p>
+                <p className="text-xs text-white/70">charles101@gmail.com</p>
               </div>
               <div className="border-t border-white/20 pt-2">
                 <Button

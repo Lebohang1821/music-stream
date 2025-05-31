@@ -1,4 +1,3 @@
-
 import { FeaturedSection } from '@/components/FeaturedSection';
 import { RecentlyPlayed } from '@/components/RecentlyPlayed';
 import { PopularArtists } from '@/components/PopularArtists';
@@ -30,15 +29,15 @@ export function MainContent({ currentTab, onSongSelect }: MainContentProps) {
           <div className="space-y-8">
             <FeaturedSection onSongSelect={onSongSelect} />
             <RecentlyPlayed onSongSelect={onSongSelect} />
-            <PopularArtists />
-            <TrendingPlaylists />
+            <PopularArtists onSongSelect={onSongSelect} />
+            <TrendingPlaylists onSongSelect={onSongSelect} />
           </div>
         );
     }
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
       {renderContent()}
     </div>
   );
