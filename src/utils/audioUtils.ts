@@ -63,59 +63,33 @@ export function createObjectURL(buffer: ArrayBuffer, mimeType: string = 'audio/m
  * Helper functions for handling audio playback
  */
 
-// Maximum number of fetch retries
-const MAX_RETRIES = 2;
-
 /**
- * Preloads an audio file for better playback
- */
-export async function preloadAudio(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const audio = new Audio();
-    audio.preload = 'auto';
-    
-    // Set a timeout for preloading
-    const timeout = setTimeout(() => {
-      audio.src = '';
-      resolve(false);
-    }, 3000);
-    
-    audio.oncanplaythrough = () => {
-      clearTimeout(timeout);
-      audio.src = '';
-      resolve(true);
-    };
-    
-    audio.onerror = () => {
-      clearTimeout(timeout);
-      audio.src = '';
-      resolve(false);
-    };
-    
-    audio.src = url;
-    audio.load();
-  });
-}
-
-/**
- * Creates a more reliable URL for audio files
+ * Creates a properly formatted URL for audio files
  */
 export function createReliableAudioUrl(path: string): string {
-  // Handle relative paths
-  if (!path.startsWith('http')) {
-    // Remove leading slash if present
-    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
-    
-    // For development environment
-    if (window.location.hostname === 'localhost') {
-      return `/${cleanPath}`;
-    }
-    
-    // For production environment
-    return `${window.location.origin}/${cleanPath}`;
+  if (!path || typeof path !== 'string') {
+    console.error('Invalid audio path:', path);
+    return '';
+  }
+
+  // If it's already a full URL, just return it
+  if (path.startsWith('http')) {
+    return path;
+  }
+
+  // Remove leading slash if present for consistency
+  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+  
+  // Handle spaces in filenames correctly
+  const encodedPath = encodeURI(cleanPath);
+  
+  // For development environment
+  if (window.location.hostname === 'localhost') {
+    return `/${encodedPath}`;
   }
   
-  return path;
+  // For production environment (Vercel)
+  return `${window.location.origin}/${encodedPath}`;
 }
 
 /**
@@ -132,4 +106,15 @@ export async function checkAudioExists(url: string): Promise<boolean> {
     console.error('Error checking audio:', error);
     return false;
   }
+}
+
+/**
+ * Formats time in seconds to MM:SS format
+ */
+export function formatTime(seconds: number): string {
+  if (isNaN(seconds)) return '0:00';
+  
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }

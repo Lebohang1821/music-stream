@@ -226,25 +226,33 @@ class AudioService implements IAudioService {
       this.audio.load();
     }
     
-    // Create a reliable URL
-    const audioUrl = createReliableAudioUrl(song.audioUrl);
-    
+    // Create a reliable URL with proper encoding
+    let audioUrl = '';
     try {
-      // Create a clean URL for checking
-      const url = new URL(audioUrl, window.location.origin);
+      // If audioUrl is not provided or invalid, try to handle it gracefully
+      if (!song.audioUrl) {
+        console.error('Invalid song object - missing audioUrl:', song);
+        return false;
+      }
+      
+      audioUrl = createReliableAudioUrl(song.audioUrl);
+      if (!audioUrl) {
+        console.error('Could not create valid audio URL from:', song.audioUrl);
+        return false;
+      }
       
       // Check if the audio file exists
-      const exists = await checkAudioExists(url.toString());
+      const exists = await checkAudioExists(audioUrl);
       if (!exists) {
-        console.error(`Audio file does not exist or is not accessible: ${url.toString()}`);
+        console.error(`Audio file does not exist or is not accessible: ${audioUrl}`);
         return false;
       }
       
       // File exists, now try to load it
-      this.audio!.src = url.toString();
+      this.audio!.src = audioUrl;
+      this.audio!.currentTime = 0; // Reset to beginning
       this.audio!.load();
       
-      // Return success
       return true;
     } catch (error) {
       console.error('Error validating audio:', error);
@@ -265,6 +273,11 @@ class AudioService implements IAudioService {
     if (this.bufferingTimeout !== null) {
       clearTimeout(this.bufferingTimeout);
       this.bufferingTimeout = null;
+    }
+
+    // Clean media session if present
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'none';
     }
     
     // If it's the same song, just toggle play/pause
@@ -304,6 +317,11 @@ class AudioService implements IAudioService {
       this.onLoadingChange(true);
     }
     
+    // Always reset current time to 0 when starting a new song
+    if (this.audio) {
+      this.audio.currentTime = 0;
+    }
+    
     // Load and prepare to play the new song
     this.currentSong = song;
     
@@ -315,6 +333,9 @@ class AudioService implements IAudioService {
         this.handlePlayError(new Error("Audio validation failed"), song);
         return;
       }
+      
+      // Update the media session
+      this.updateMediaSession();
       
       // Wait a small amount of time to allow initial buffering
       setTimeout(() => {
@@ -332,29 +353,35 @@ class AudioService implements IAudioService {
     }
   }
   
-  // Handle play errors with retry mechanism
-  private handlePlayError(error: any, song: any) {
-    if (this.retryCount < this.maxRetries) {
-      this.retryCount++;
-      console.log(`Retrying playback (${this.retryCount}/${this.maxRetries})...`);
+  // Add Media Session API support for better control
+  private updateMediaSession() {
+    if ('mediaSession' in navigator && this.currentSong) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: this.currentSong.title,
+        artist: this.currentSong.artist,
+        album: this.currentSong.album || '',
+        artwork: [{ src: this.currentSong.cover, sizes: '512x512', type: 'image/png' }]
+      });
       
-      // Short delay before retry
-      setTimeout(() => {
-        // Try with a modified URL to bypass cache
-        this.play(song);
-      }, 1000);
-    } else {
-      this.isLoadingState = false;
-      if (this.onLoadingChange) {
-        this.onLoadingChange(false);
-      }
-      if (this.onError) {
-        this.onError(`Failed to play audio after ${this.maxRetries} attempts. Please try again later.`);
-      }
+      navigator.mediaSession.setActionHandler('play', () => {
+        this.resume();
+      });
+      
+      navigator.mediaSession.setActionHandler('pause', () => {
+        this.pause();
+      });
+      
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        this.playPrevious();
+      });
+      
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        this.playNext();
+      });
     }
   }
-
-  // Override default playNext to include error handling
+  
+  // Update playNext method to properly reset timer
   playNext() {
     if (this.queue.length === 0) return;
     
@@ -379,41 +406,31 @@ class AudioService implements IAudioService {
       this.retryCount = 0;
       this.lastAttemptedSong = nextSong;
       
-      this.currentSong = nextSong;
+      // Reset progress by explicitly setting currentTime to 0
       if (this.audio) {
-        // Make the URL absolute and add cache-busting
-        const baseUrl = window.location.origin;
-        let audioUrl: string;
-        
-        if (nextSong.audioUrl.startsWith('http')) {
-          audioUrl = nextSong.audioUrl;
-        } else {
-          if (window.location.hostname === 'localhost') {
-            audioUrl = nextSong.audioUrl;
-          } else {
-            const cleanPath = nextSong.audioUrl.startsWith('/') ? nextSong.audioUrl.substring(1) : nextSong.audioUrl;
-            audioUrl = `${baseUrl}/${cleanPath}`;
+        this.audio.currentTime = 0;
+      }
+      
+      this.currentSong = nextSong;
+      
+      // Use the validateAudioAndPlay method to properly handle URL encoding
+      this.validateAudioAndPlay(nextSong).then(isValid => {
+        if (isValid && this.audio) {
+          this.updateMediaSession();
+          this.audio.play().catch(err => {
+            console.error('Error playing next song:', err);
+            this.handlePlayError(err, nextSong);
+          });
+          
+          if (this.onSongChange) {
+            this.onSongChange(nextSong);
           }
         }
-        
-        const urlWithCache = new URL(audioUrl, baseUrl);
-        urlWithCache.searchParams.append('_', Date.now().toString());
-        
-        this.audio.src = urlWithCache.toString();
-        this.audio.load();
-        this.audio.play().catch(err => {
-          console.error('Error playing next song:', err);
-          this.handlePlayError(err, nextSong);
-        });
-        
-        if (this.onSongChange) {
-          this.onSongChange(nextSong);
-        }
-      }
+      });
     }
   }
 
-  // Make sure playPrevious method is correctly defined
+  // Update playPrevious method to properly reset timer
   playPrevious() {
     if (this.queue.length === 0) return;
     
@@ -429,19 +446,27 @@ class AudioService implements IAudioService {
     const prevSong = this.queue[this.currentIndex];
     
     if (prevSong) {
-      this.currentSong = prevSong;
+      // Reset progress by explicitly setting currentTime to 0
       if (this.audio) {
-        this.audio.src = prevSong.audioUrl;
-        this.audio.load();
-        this.audio.play().catch(err => {
-          console.error('Error playing previous song:', err);
-          this.handlePlayError(err, prevSong);
-        });
-        
-        if (this.onSongChange) {
-          this.onSongChange(prevSong);
-        }
+        this.audio.currentTime = 0;
       }
+      
+      this.currentSong = prevSong;
+      
+      // Use the validateAudioAndPlay method to properly handle URL encoding
+      this.validateAudioAndPlay(prevSong).then(isValid => {
+        if (isValid && this.audio) {
+          this.updateMediaSession();
+          this.audio.play().catch(err => {
+            console.error('Error playing previous song:', err);
+            this.handlePlayError(err, prevSong);
+          });
+          
+          if (this.onSongChange) {
+            this.onSongChange(prevSong);
+          }
+        }
+      });
     }
   }
 
@@ -561,6 +586,28 @@ class AudioService implements IAudioService {
       }
     }
   }
+
+  // Change handlePlayError from private to public
+  handlePlayError(error: any, song: any) {
+    if (this.retryCount < this.maxRetries) {
+      this.retryCount++;
+      console.log(`Retrying playback (${this.retryCount}/${this.maxRetries})...`);
+      
+      // Short delay before retry
+      setTimeout(() => {
+        // Try with a modified URL to bypass cache
+        this.play(song);
+      }, 1000);
+    } else {
+      this.isLoadingState = false;
+      if (this.onLoadingChange) {
+        this.onLoadingChange(false);
+      }
+      if (this.onError) {
+        this.onError(`Failed to play audio after ${this.maxRetries} attempts. Please try again later.`);
+      }
+    }
+  }
 }
 
 // Define type explicitly to help TypeScript
@@ -590,6 +637,7 @@ interface IAudioService {
   setRepeatMode(repeat: boolean): void;
   setShuffleMode(shuffle: boolean): void;
   cleanup(): void;
+  handlePlayError(error: any, song: any): void; // Added this method to the interface
 }
 
 // Export as IAudioService type
