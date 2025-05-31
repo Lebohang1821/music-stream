@@ -1,4 +1,4 @@
-import { createReliableAudioUrl, checkAudioExists } from '@/utils/audioUtils';
+import { createReliableAudioUrl, checkAudioExists, createSafeAudioUrl, testAudioFile } from '@/utils/audioUtils';
 
 class AudioService implements IAudioService {
   private audio: HTMLAudioElement | null = null;
@@ -217,45 +217,63 @@ class AudioService implements IAudioService {
   private retryCount = 0;
   private lastAttemptedSong: any = null;
 
-  // Add a method to handle fetch aborts by validating the audio file first
-  private async validateAudioAndPlay(song: any): Promise<boolean> {
-    // Stop all previous loads
+  // Add these new helper methods
+  private async prepareAudioUrl(url: string): Promise<string | null> {
+    if (!url) return null;
+    
+    try {
+      // Create a safe URL based on the path
+      const safeUrl = createSafeAudioUrl(url);
+      
+      // Test if the audio file exists and can be accessed
+      const exists = await testAudioFile(safeUrl);
+      if (!exists) {
+        console.error('Audio file does not exist or cannot be accessed:', safeUrl);
+        return null;
+      }
+      
+      return safeUrl;
+    } catch (error) {
+      console.error('Error preparing audio URL:', error);
+      return null;
+    }
+  }
+  
+  private resetAudioElement() {
     if (this.audio) {
+      // Unload any previous source
       this.audio.pause();
-      this.audio.src = '';
+      this.audio.removeAttribute('src');
       this.audio.load();
     }
+  }
+  
+  // Modified validateAudioAndPlay method
+  private async validateAudioAndPlay(song: any): Promise<boolean> {
+    if (!song || !song.audioUrl) {
+      console.error('Invalid song or missing URL:', song);
+      return false;
+    }
     
-    // Create a reliable URL with proper encoding
-    let audioUrl = '';
+    // Reset the audio element completely
+    this.resetAudioElement();
+    
+    // Prepare the audio URL
+    const validUrl = await this.prepareAudioUrl(song.audioUrl);
+    if (!validUrl) {
+      console.error('Could not create valid audio URL for:', song.audioUrl);
+      return false;
+    }
+    
     try {
-      // If audioUrl is not provided or invalid, try to handle it gracefully
-      if (!song.audioUrl) {
-        console.error('Invalid song object - missing audioUrl:', song);
-        return false;
-      }
-      
-      audioUrl = createReliableAudioUrl(song.audioUrl);
-      if (!audioUrl) {
-        console.error('Could not create valid audio URL from:', song.audioUrl);
-        return false;
-      }
-      
-      // Check if the audio file exists
-      const exists = await checkAudioExists(audioUrl);
-      if (!exists) {
-        console.error(`Audio file does not exist or is not accessible: ${audioUrl}`);
-        return false;
-      }
-      
-      // File exists, now try to load it
-      this.audio!.src = audioUrl;
-      this.audio!.currentTime = 0; // Reset to beginning
+      // Set the source and load the audio
+      this.audio!.src = validUrl;
+      this.audio!.currentTime = 0; // Reset playback position
       this.audio!.load();
       
       return true;
     } catch (error) {
-      console.error('Error validating audio:', error);
+      console.error('Error setting audio source:', error);
       return false;
     }
   }
@@ -317,15 +335,10 @@ class AudioService implements IAudioService {
       this.onLoadingChange(true);
     }
     
-    // Always reset current time to 0 when starting a new song
-    if (this.audio) {
-      this.audio.currentTime = 0;
-    }
-    
     // Load and prepare to play the new song
     this.currentSong = song;
     
-    // Validate and load the audio file with a smaller chunk approach
+    // Validate and load the audio file with improved error handling
     try {
       const isValid = await this.validateAudioAndPlay(song);
       
@@ -334,19 +347,15 @@ class AudioService implements IAudioService {
         return;
       }
       
-      // Update the media session
-      this.updateMediaSession();
-      
       // Wait a small amount of time to allow initial buffering
       setTimeout(() => {
-        if (this.shouldBePlayingWhenReady) {
-          this.audio!.play().catch((err) => {
+        if (this.shouldBePlayingWhenReady && this.audio) {
+          this.audio.play().catch((err) => {
             console.error('Error in initial playback:', err);
             this.handlePlayError(err, song);
           });
         }
-      }, 200);
-      
+      }, 300); // Slightly longer delay to ensure loading has started
     } catch (err) {
       console.error('Error setting audio source:', err);
       this.handlePlayError(err, song);
@@ -406,17 +415,10 @@ class AudioService implements IAudioService {
       this.retryCount = 0;
       this.lastAttemptedSong = nextSong;
       
-      // Reset progress by explicitly setting currentTime to 0
-      if (this.audio) {
-        this.audio.currentTime = 0;
-      }
-      
       this.currentSong = nextSong;
       
-      // Use the validateAudioAndPlay method to properly handle URL encoding
       this.validateAudioAndPlay(nextSong).then(isValid => {
         if (isValid && this.audio) {
-          this.updateMediaSession();
           this.audio.play().catch(err => {
             console.error('Error playing next song:', err);
             this.handlePlayError(err, nextSong);
@@ -425,6 +427,10 @@ class AudioService implements IAudioService {
           if (this.onSongChange) {
             this.onSongChange(nextSong);
           }
+        } else {
+          // Skip to next song if this one failed
+          console.error('Skipping invalid song:', nextSong.title);
+          this.playNext();
         }
       });
     }

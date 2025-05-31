@@ -7,8 +7,8 @@ import { MobilePlayer } from '@/components/MobilePlayer';
 import { ChevronLeft, ChevronRight, Menu, X, SkipBack, SkipForward, Play, Pause, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { audioService } from '@/services/audioService';
-import { toast } from '@/components/ui/sonner';
-import { createReliableAudioUrl, formatTime } from '@/utils/audioUtils';
+import { toast } from "@/components/ui/sonner";
+import { createSafeAudioUrl, formatTime } from '@/utils/audioUtils';
 
 // Song mapping for the available audio files
 const songData = {
@@ -74,14 +74,14 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [audioErrorCount, setAudioErrorCount] = useState(0);
-  const [failedSongs, setFailedSongs] = useState<Record<number, boolean>>({});
+  const [failedSongs, setFailedSongs] = useState<Record<string, boolean>>({});
   
   // Initialize queue on component mount
   useEffect(() => {
-    // Set the initial queue with all available songs - make sure URLs are valid
+    // Set the initial queue with all available songs - with properly encoded URLs
     const allSongs = Object.values(songData).map(song => ({
       ...song,
-      audioUrl: createReliableAudioUrl(song.audioUrl)
+      audioUrl: createSafeAudioUrl(song.audioUrl) // Ensure URLs are properly formatted
     }));
     audioService.setQueue(allSongs);
     
@@ -99,17 +99,17 @@ const Index = () => {
     // Handle audio errors
     audioService.onError = (message) => {
       if (currentSong) {
-        // Track which songs have failed
+        // Track failed songs
         setFailedSongs(prev => ({
-          ...prev, 
+          ...prev,
           [currentSong.id]: true
         }));
         
-        // Show error toast with helpful message
-        toast.error("Audio Playback Issue", {
-          description: "There's a problem playing this audio. Please try another song.",
+        // Show user friendly error
+        toast.error("Audio Playback Error", {
+          description: "There was a problem playing this song. Try another one.",
           action: {
-            label: "Try Next Song",
+            label: "Next Song",
             onClick: () => handleNext()
           }
         });
@@ -161,20 +161,20 @@ const Index = () => {
   }, [isPlaying]);
 
   const handleSongSelect = (song: any) => {
-    // If this song previously failed, try another one
+    // If this song previously failed, try a different one
     if (failedSongs[song.id]) {
-      toast.warning("Trying different song", {
-        description: "Previous song couldn't be played, trying another one."
+      toast.info("Trying alternative", {
+        description: "The previous song couldn't be loaded. Trying a different one."
       });
       
-      // Find the next song that hasn't failed
+      // Find another song that hasn't failed
       const availableSongs = Object.values(songData).filter(s => !failedSongs[s.id]);
       if (availableSongs.length > 0) {
         song = availableSongs[0];
       }
     }
     
-    // Map to our audio files if it's one we have
+    // Map to our audio files and create safe URLs
     let audioSong = { ...song };
     
     // Try to match by title to our available songs
@@ -182,17 +182,17 @@ const Index = () => {
       if (availableSong.title === song.title) {
         audioSong = { 
           ...song, 
-          audioUrl: createReliableAudioUrl(availableSong.audioUrl)
+          audioUrl: createSafeAudioUrl(availableSong.audioUrl)
         };
       }
     });
     
-    // Reset progress indicators before playing new song
+    // Reset progress for new song
     setCurrentTime('0:00');
     setProgress(0);
-    setCurrentSong(audioSong);
     
-    // Try to play with properly encoded URL
+    setCurrentSong(audioSong);
+    setIsLoading(true);
     audioService.play(audioSong);
     setIsPlaying(true);
   };

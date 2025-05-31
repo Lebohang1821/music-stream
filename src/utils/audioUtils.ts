@@ -60,61 +60,84 @@ export function createObjectURL(buffer: ArrayBuffer, mimeType: string = 'audio/m
 }
 
 /**
- * Helper functions for handling audio playback
+ * Helper functions for properly handling audio files
  */
 
 /**
- * Creates a properly formatted URL for audio files
+ * Creates a properly encoded URL for audio files
  */
-export function createReliableAudioUrl(path: string): string {
+export function createSafeAudioUrl(path: string): string {
   if (!path || typeof path !== 'string') {
     console.error('Invalid audio path:', path);
     return '';
   }
 
-  // If it's already a full URL, just return it
-  if (path.startsWith('http')) {
-    return path;
-  }
+  try {
+    // First, decode the path to handle any already encoded characters
+    // This prevents double-encoding issues
+    let decodedPath = path;
+    try {
+      decodedPath = decodeURIComponent(path);
+    } catch (e) {
+      // If decoding fails, use the original path
+      decodedPath = path;
+    }
 
-  // Remove leading slash if present for consistency
-  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
-  
-  // Handle spaces in filenames correctly
-  const encodedPath = encodeURI(cleanPath);
-  
-  // For development environment
-  if (window.location.hostname === 'localhost') {
-    return `/${encodedPath}`;
+    // Clean the path from leading slash
+    const cleanPath = decodedPath.startsWith('/') 
+      ? decodedPath.substring(1) 
+      : decodedPath;
+
+    // For local development
+    if (window.location.hostname === 'localhost') {
+      // Encode individual path segments but preserve slashes
+      const segments = cleanPath.split('/');
+      const encodedSegments = segments.map(segment => encodeURIComponent(segment));
+      return '/' + encodedSegments.join('/');
+    }
+
+    // For production environment
+    // Encode the entire path without breaking it at slashes
+    // This helps with files that have spaces or special characters
+    return `${window.location.origin}/${encodeURIComponent(cleanPath)}`;
+  } catch (error) {
+    console.error('Error creating audio URL:', error);
+    return '';
   }
-  
-  // For production environment (Vercel)
-  return `${window.location.origin}/${encodedPath}`;
 }
 
 /**
- * Checks if an audio file exists and is accessible
+ * Tests if an audio file exists and can be loaded
  */
-export async function checkAudioExists(url: string): Promise<boolean> {
+export async function testAudioFile(url: string): Promise<boolean> {
   try {
+    // First make a HEAD request to verify the file exists
     const response = await fetch(url, { 
       method: 'HEAD',
-      cache: 'no-store'
+      cache: 'no-cache',
+      mode: 'cors',
+      credentials: 'same-origin'
     });
-    return response.ok;
+    
+    if (!response.ok) {
+      console.error('Audio file not found:', url);
+      return false;
+    }
+    
+    return true;
   } catch (error) {
-    console.error('Error checking audio:', error);
+    console.error('Error checking audio file:', error);
     return false;
   }
 }
 
 /**
- * Formats time in seconds to MM:SS format
+ * Format time in seconds to MM:SS
  */
 export function formatTime(seconds: number): string {
-  if (isNaN(seconds)) return '0:00';
+  if (isNaN(seconds) || !isFinite(seconds)) return '0:00';
   
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
+  const mins = Math.floor(Math.max(0, seconds) / 60);
+  const secs = Math.floor(Math.max(0, seconds) % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
