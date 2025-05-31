@@ -31,3 +31,30 @@ export function createAudioUrl(path: string): string {
   
   return url.toString();
 }
+
+/**
+ * Simple fetch-based audio proxy function
+ * This avoids the axios dependency
+ */
+export async function proxyAudioFile(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url, {
+    headers: {
+      'Range': 'bytes=0-',
+      'Cache-Control': 'no-cache',
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to load audio file: ${response.status} ${response.statusText}`);
+  }
+  
+  return await response.arrayBuffer();
+}
+
+/**
+ * Creates a blob URL from an array buffer
+ */
+export function createObjectURL(buffer: ArrayBuffer, mimeType: string = 'audio/mpeg'): string {
+  const blob = new Blob([buffer], { type: mimeType });
+  return URL.createObjectURL(blob);
+}

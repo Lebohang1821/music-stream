@@ -10,7 +10,7 @@ class AudioService {
   private bufferingTimeout: number | null = null;
   private progressivePlaybackStarted: boolean = false;
 
-  initialize() {
+  initialize(): IAudioService {
     if (!this.audio) {
       this.audio = new Audio();
       
@@ -389,6 +389,38 @@ class AudioService {
     }
   }
 
+  // Make sure playPrevious method is correctly defined
+  playPrevious() {
+    if (this.queue.length === 0) return;
+    
+    // If we're at the start or within first 3 seconds, go to previous song
+    if (this.currentIndex > 0 && this.audio && this.audio.currentTime > 3) {
+      // If we're past 3 seconds into the song, restart the current song
+      this.audio.currentTime = 0;
+      return;
+    }
+    
+    // Move to previous track
+    this.currentIndex = (this.currentIndex - 1 + this.queue.length) % this.queue.length;
+    const prevSong = this.queue[this.currentIndex];
+    
+    if (prevSong) {
+      this.currentSong = prevSong;
+      if (this.audio) {
+        this.audio.src = prevSong.audioUrl;
+        this.audio.load();
+        this.audio.play().catch(err => {
+          console.error('Error playing previous song:', err);
+          this.handlePlayError(err, prevSong);
+        });
+        
+        if (this.onSongChange) {
+          this.onSongChange(prevSong);
+        }
+      }
+    }
+  }
+
   pause() {
     this.audio?.pause();
   }
@@ -462,7 +494,79 @@ class AudioService {
     this.onError = null;
     this.onBuffering = null;
   }
+
+  // Ensure these methods are implemented
+  setRepeatMode(repeat: boolean): void {
+    this.isRepeatMode = repeat;
+    if (this.audio) {
+      this.audio.loop = repeat;
+    }
+  }
+
+  setShuffleMode(shuffle: boolean): void {
+    this.isShuffleMode = shuffle;
+    
+    if (shuffle) {
+      // Save the original queue if not saved already
+      if (this.originalQueue.length === 0) {
+        this.originalQueue = [...this.queue];
+      }
+      
+      // Shuffle the queue while keeping current song at current index
+      const currentSong = this.queue[this.currentIndex];
+      const remainingItems = this.queue.filter(song => song.id !== currentSong.id);
+      
+      // Fisher-Yates shuffle algorithm
+      for (let i = remainingItems.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [remainingItems[i], remainingItems[j]] = [remainingItems[j], remainingItems[i]];
+      }
+      
+      // Put current song back at current index
+      this.queue = [...remainingItems.slice(0, this.currentIndex), 
+                    currentSong,
+                    ...remainingItems.slice(this.currentIndex)];
+    } else {
+      // Restore original queue
+      if (this.originalQueue.length > 0) {
+        const currentSong = this.queue[this.currentIndex];
+        this.queue = [...this.originalQueue];
+        // Find the current song in the original queue
+        this.currentIndex = this.queue.findIndex(song => song.id === currentSong.id);
+        if (this.currentIndex === -1) this.currentIndex = 0;
+      }
+    }
+  }
 }
 
-// Export a singleton instance
-export const audioService = new AudioService().initialize();
+// Define type explicitly to help TypeScript
+interface IAudioService {
+  onTimeUpdate: ((currentTime: number, duration: number) => void) | null;
+  onSongChange: ((song: any) => void) | null;
+  onLoadingChange: ((isLoading: boolean) => void) | null;
+  onError: ((message: string) => void) | null;
+  onBuffering: ((isBuffering: boolean) => void) | null;
+  initialize(): IAudioService; // Return IAudioService instead of AudioService
+  play(song: any): void;
+  playPrevious(): void;
+  playNext(): void;
+  pause(): void;
+  resume(): void;
+  togglePlayPause(): void;
+  getCurrentTime(): number;
+  getDuration(): number;
+  seekTo(time: number): void;
+  setVolume(volume: number): void;
+  isPlaying(): boolean;
+  getCurrentSong(): any;
+  getQueue(): any[];
+  isLoading(): boolean;
+  loadSong(song: any): void;
+  setQueue(songs: any[]): void;
+  setRepeatMode(repeat: boolean): void;
+  setShuffleMode(shuffle: boolean): void;
+  cleanup(): void;
+}
+
+// Export as IAudioService type
+export const audioService: IAudioService = new AudioService().initialize();

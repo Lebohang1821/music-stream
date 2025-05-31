@@ -249,7 +249,7 @@ const Index = () => {
     setShowMobileNav(false);
   };
 
-  // Handle previous button click
+  // Handle previous button click (fix method name)
   const handlePrevious = () => {
     audioService.playPrevious();
   };
