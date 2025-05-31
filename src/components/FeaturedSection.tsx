@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from "sonner";
 
 interface FeaturedSectionProps {
   onSongSelect: (song: any) => void;
@@ -57,6 +58,14 @@ const featured = [
 export function FeaturedSection({ onSongSelect }: FeaturedSectionProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Add image error handling
+  const [imageErrors, setImageErrors] = useState<{[key: string]: boolean}>({});
+
+  // Fallback image for when background fails to load
+  const handleImageError = (index: number) => {
+    setImageErrors(prev => ({...prev, [index]: true}));
+  };
 
   // Detect mobile screens
   useEffect(() => {
@@ -92,8 +101,16 @@ export function FeaturedSection({ onSongSelect }: FeaturedSectionProps) {
         <div className="relative rounded-xl overflow-hidden h-[350px] shadow-lg">
           <div 
             className="absolute inset-0 bg-cover bg-center bg-no-repeat" 
-            style={{ backgroundImage: `url(${currentFeatured.cover})` }}
-          ></div>
+            style={{ backgroundImage: `url(${imageErrors[currentIndex] ? currentFeatured.cover : (currentFeatured.background || currentFeatured.cover)})` }}
+          >
+            {/* Hidden image for preloading */}
+            <img 
+              src={currentFeatured.background || currentFeatured.cover}
+              alt=""
+              className="hidden"
+              onError={() => handleImageError(currentIndex)}
+            />
+          </div>
           <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-black/80"></div>
           
           <div className="absolute inset-0 flex flex-col justify-between p-6">
@@ -138,8 +155,15 @@ export function FeaturedSection({ onSongSelect }: FeaturedSectionProps) {
       <div className="hidden md:block">
         <div 
           className="relative rounded-xl overflow-hidden h-60 bg-cover bg-center"
-          style={{ backgroundImage: `url(${currentFeatured.background || currentFeatured.cover})` }}
+          style={{ backgroundImage: `url(${imageErrors[currentIndex] ? currentFeatured.cover : (currentFeatured.background || currentFeatured.cover)})` }}
         >
+          {/* Hidden image for preloading */}
+          <img 
+            src={currentFeatured.background || currentFeatured.cover}
+            alt=""
+            className="hidden"
+            onError={() => handleImageError(currentIndex)}
+          />
           <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent"></div>
           
           <div className="absolute inset-0 flex flex-col justify-center p-10">

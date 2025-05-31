@@ -7,10 +7,19 @@ class AudioService {
   private isShuffleMode: boolean = false;
   private isRepeatMode: boolean = false;
   private isLoadingState: boolean = false;
+  private bufferingTimeout: number | null = null;
+  private progressivePlaybackStarted: boolean = false;
 
   initialize() {
     if (!this.audio) {
       this.audio = new Audio();
+      
+      // Set preload to auto to start buffering immediately
+      this.audio.preload = 'auto';
+      
+      // Allow crossorigin content for better streaming
+      this.audio.crossOrigin = 'anonymous';
+      
       this.setupAudioEvents();
     }
     return this;
@@ -19,31 +28,112 @@ class AudioService {
   private setupAudioEvents() {
     if (!this.audio) return;
     
-    // Track loading state
+    // Track loading states
     this.audio.addEventListener('loadstart', () => {
       this.isLoadingState = true;
+      this.progressivePlaybackStarted = false;
+      
       if (this.onLoadingChange) {
         this.onLoadingChange(true);
       }
     });
     
+    // Start playing as soon as we have enough data
+    this.audio.addEventListener('canplaythrough', () => {
+      if (this.isLoadingState && !this.progressivePlaybackStarted) {
+        this.progressivePlaybackStarted = true;
+        this.isLoadingState = false;
+        
+        if (this.onLoadingChange) {
+          this.onLoadingChange(false);
+        }
+        
+        // Start playing if we're supposed to
+        if (this.shouldBePlayingWhenReady) {
+          this.audio?.play().catch(err => {
+            console.error('Error in progressive playback:', err);
+          });
+        }
+      }
+    });
+    
+    // Monitor buffering events
+    this.audio.addEventListener('progress', () => {
+      this.checkBufferingProgress();
+    });
+    
+    // Start playback when a minimum amount is buffered
     this.audio.addEventListener('canplay', () => {
+      // We have at least some data, enough to start playing
+      if (this.isLoadingState && !this.progressivePlaybackStarted) {
+        // Start a timer to allow a bit more buffering before playing
+        if (this.bufferingTimeout === null) {
+          this.bufferingTimeout = window.setTimeout(() => {
+            if (!this.progressivePlaybackStarted) {
+              this.progressivePlaybackStarted = true;
+              this.isLoadingState = false;
+              
+              if (this.onLoadingChange) {
+                this.onLoadingChange(false);
+              }
+              
+              if (this.shouldBePlayingWhenReady && this.audio) {
+                this.audio.play().catch(err => {
+                  console.error('Error in delayed playback:', err);
+                });
+              }
+            }
+            this.bufferingTimeout = null;
+          }, 500); // Short delay to allow more buffering
+        }
+      }
+    });
+    
+    // Handle playback issues
+    this.audio.addEventListener('waiting', () => {
+      // We're waiting for more data
+      if (!this.isLoadingState) {
+        this.isLoadingState = true;
+        if (this.onBuffering) {
+          this.onBuffering(true);
+        }
+      }
+    });
+    
+    this.audio.addEventListener('playing', () => {
+      // Playback has started or resumed
       this.isLoadingState = false;
+      if (this.onBuffering) {
+        this.onBuffering(false);
+      }
       if (this.onLoadingChange) {
         this.onLoadingChange(false);
       }
     });
     
-    this.audio.addEventListener('error', () => {
+    this.audio.addEventListener('error', (e) => {
       this.isLoadingState = false;
+      this.progressivePlaybackStarted = false;
+      if (this.bufferingTimeout !== null) {
+        clearTimeout(this.bufferingTimeout);
+        this.bufferingTimeout = null;
+      }
+      
       if (this.onLoadingChange) {
         this.onLoadingChange(false);
       }
-      console.error('Audio error occurred');
+      if (this.onError) {
+        this.onError(this.audio?.error?.message || 'Error loading audio');
+      }
+      console.error('Audio error:', this.audio?.error);
     });
     
+    // Clean up timeout on end
     this.audio.addEventListener('ended', () => {
-      // Auto-play next song when current song ends
+      if (this.bufferingTimeout !== null) {
+        clearTimeout(this.bufferingTimeout);
+        this.bufferingTimeout = null;
+      }
       this.playNext();
       if (this.onSongChange) {
         this.onSongChange(this.currentSong);
@@ -57,9 +147,41 @@ class AudioService {
     });
   }
 
+  // Flag to track if we should start playing when ready
+  private shouldBePlayingWhenReady: boolean = false;
+  
+  // Check if we have enough buffered data
+  private checkBufferingProgress() {
+    if (!this.audio || !this.isLoadingState || this.progressivePlaybackStarted) return;
+    
+    if (this.audio.buffered.length > 0) {
+      // Calculate how many seconds we've buffered
+      const bufferedEnd = this.audio.buffered.end(0);
+      const duration = this.audio.duration;
+      
+      // If we have at least 10 seconds or 15% buffered, start playing
+      if (bufferedEnd >= 10 || (duration && bufferedEnd / duration >= 0.15)) {
+        this.progressivePlaybackStarted = true;
+        this.isLoadingState = false;
+        
+        if (this.onLoadingChange) {
+          this.onLoadingChange(false);
+        }
+        
+        if (this.shouldBePlayingWhenReady) {
+          this.audio.play().catch(err => {
+            console.error('Error in buffering-based playback:', err);
+          });
+        }
+      }
+    }
+  }
+
   onTimeUpdate: ((currentTime: number, duration: number) => void) | null = null;
   onSongChange: ((song: any) => void) | null = null;
   onLoadingChange: ((isLoading: boolean) => void) | null = null;
+  onError: ((message: string) => void) | null = null;
+  onBuffering: ((isBuffering: boolean) => void) | null = null;
 
   setQueue(songs: any[]) {
     this.queue = [...songs];
@@ -88,11 +210,22 @@ class AudioService {
   play(song: any) {
     if (!this.audio) return;
     
+    // Cancel any previous timeouts
+    if (this.bufferingTimeout !== null) {
+      clearTimeout(this.bufferingTimeout);
+      this.bufferingTimeout = null;
+    }
+    
     // If it's the same song, just toggle play/pause
     if (this.currentSong && this.currentSong.id === song.id) {
       if (this.audio.paused) {
-        this.audio.play().catch(err => console.error('Error playing audio:', err));
+        this.shouldBePlayingWhenReady = true;
+        this.audio.play().catch(err => {
+          console.error('Error playing existing audio:', err);
+          this.shouldBePlayingWhenReady = false;
+        });
       } else {
+        this.shouldBePlayingWhenReady = false;
         this.audio.pause();
       }
       return;
@@ -110,23 +243,24 @@ class AudioService {
     
     // Set loading state
     this.isLoadingState = true;
+    this.progressivePlaybackStarted = false;
+    this.shouldBePlayingWhenReady = true;
+    
     if (this.onLoadingChange) {
       this.onLoadingChange(true);
     }
     
-    // Load and play the new song
+    // Load and prepare to play the new song
     this.currentSong = song;
-    this.audio.src = song.audioUrl;
+    
+    // Add cache-busting and range request support
+    const audioUrl = new URL(song.audioUrl, window.location.origin);
+    audioUrl.searchParams.append('_', Date.now().toString());
+    
+    this.audio.src = audioUrl.toString();
     this.audio.load();
-    this.audio.play().catch(err => {
-      console.error('Error playing audio:', err);
-      this.isLoadingState = false;
-      if (this.onLoadingChange) {
-        this.onLoadingChange(false);
-      }
-    });
   }
-
+  
   playPrevious() {
     if (this.queue.length === 0) return;
     
@@ -278,6 +412,28 @@ class AudioService {
   
   isLoading() {
     return this.isLoadingState;
+  }
+  
+  // Clean up resources when component unmounts
+  cleanup() {
+    if (this.bufferingTimeout !== null) {
+      clearTimeout(this.bufferingTimeout);
+      this.bufferingTimeout = null;
+    }
+    
+    this.shouldBePlayingWhenReady = false;
+    
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.src = '';
+      this.audio.load();
+    }
+    
+    this.onTimeUpdate = null;
+    this.onSongChange = null;
+    this.onLoadingChange = null;
+    this.onError = null;
+    this.onBuffering = null;
   }
 }
 

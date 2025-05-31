@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play } from 'lucide-react';
+import { Play, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Define artists with their associated songs
@@ -74,6 +74,7 @@ interface PopularArtistsProps {
 export function PopularArtists({ onSongSelect }: PopularArtistsProps) {
 	const navigate = useNavigate();
 	const [hoveredArtist, setHoveredArtist] = useState<number | null>(null);
+	const [imageErrors, setImageErrors] = useState<{[key: number]: boolean}>({});
 
 	const handleArtistClick = (artistId: number) => {
 		// In a real app, this would navigate to the artist page
@@ -87,10 +88,15 @@ export function PopularArtists({ onSongSelect }: PopularArtistsProps) {
 		}
 	};
 
+	// Handle image loading errors
+	const handleImageError = (artistId: number) => {
+		setImageErrors(prev => ({...prev, [artistId]: true}));
+	};
+
 	return (
 		<div className="mt-8">
 			<h2 className="text-2xl font-bold mb-4">Popular Artists</h2>
-
+			
 			<div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 				{artistsData.map((artist) => (
 					<div
@@ -100,15 +106,21 @@ export function PopularArtists({ onSongSelect }: PopularArtistsProps) {
 						onMouseEnter={() => setHoveredArtist(artist.id)}
 						onMouseLeave={() => setHoveredArtist(null)}
 					>
-						<div className="aspect-square rounded-full overflow-hidden relative">
-							<img
-								src={artist.image}
-								alt={artist.name}
-								className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-							/>
-							<div
-								className={`absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200`}
-							>
+						<div className="aspect-square rounded-full overflow-hidden relative bg-black/20">
+							{imageErrors[artist.id] ? (
+								<div className="w-full h-full flex items-center justify-center bg-purple-800/40">
+									<ImageOff size={48} className="text-white/60" />
+								</div>
+							) : (
+								<img
+									src={artist.image}
+									alt={artist.name}
+									className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+									onError={() => handleImageError(artist.id)}
+									loading="lazy"
+								/>
+							)}
+							<div className={`absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200`}>
 								{hoveredArtist === artist.id && (
 									<Button
 										onClick={(e) => handlePlayArtist(e, artist)}

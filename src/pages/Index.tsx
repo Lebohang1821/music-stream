@@ -7,6 +7,7 @@ import { MobilePlayer } from '@/components/MobilePlayer';
 import { ChevronLeft, ChevronRight, Menu, X, SkipBack, SkipForward, Play, Pause, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { audioService } from '@/services/audioService';
+import { toast } from "sonner";
 
 // Song mapping for the available audio files
 const songData = {
@@ -70,6 +71,9 @@ const Index = () => {
   const [currentTime, setCurrentTime] = useState("0:00");
   const [progress, setProgress] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 2;
 
   // Initialize queue on component mount
   useEffect(() => {
@@ -130,11 +134,33 @@ const Index = () => {
     }
   }, [isPlaying]);
 
-  // Initialize audio with current song on component mount
+  // Initialize audio with current song and handle buffering events
   useEffect(() => {
     // Set up audio events for loading tracking
     audioService.onLoadingChange = (loading) => {
       setIsLoading(loading);
+    };
+    
+    // Track buffering state separately from initial loading
+    audioService.onBuffering = (buffering) => {
+      setIsBuffering(buffering);
+    };
+    
+    // Set up error handler for audio loading
+    audioService.onError = (message) => {
+      // Show error toast
+      toast.error("Error Playing Audio", {
+        description: "There was a problem loading the audio file. Please try again.",
+        action: {
+          label: "Retry",
+          onClick: () => {
+            if (retryCount < maxRetries && currentSong) {
+              setRetryCount(prev => prev + 1);
+              handleSongSelect(currentSong);
+            }
+          }
+        },
+      });
     };
 
     // Initialize audio with the current song
@@ -155,10 +181,15 @@ const Index = () => {
     };
     
     return () => {
-      audioService.onSongChange = null;
-      audioService.onLoadingChange = null;
+      // Clean up all audio resources
+      audioService.cleanup();
     };
-  }, []);
+  }, [currentSong, retryCount, maxRetries]);
+
+  // Reset retry count when song changes
+  useEffect(() => {
+    setRetryCount(0);
+  }, [currentSong?.id]);
 
   const handleSongSelect = (song: any) => {
     // Map to our audio files if it's one we have
@@ -171,10 +202,19 @@ const Index = () => {
       }
     });
     
-    setIsLoading(true);
-    setCurrentSong(audioSong);
-    audioService.play(audioSong);
-    setIsPlaying(true);
+    // Use a try-catch to handle initial errors
+    try {
+      setIsLoading(true);
+      setCurrentSong(audioSong);
+      audioService.play(audioSong);
+      setIsPlaying(true);
+    } catch (error) {
+      console.error("Error selecting song:", error);
+      setIsLoading(false);
+      toast.error("Error Playing Audio", {
+        description: "There was a problem loading the audio file. Please try again."
+      });
+    }
   };
 
   const handlePlayPause = () => {
@@ -228,6 +268,13 @@ const Index = () => {
     audioService.playNext();
   };
 
+  // Pass buffering state to components that need it
+  const playerState = {
+    isLoading,
+    isBuffering,
+    isPlaying
+  };
+
   return (
     <div className="h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white w-full flex flex-col">
       <div className="flex flex-1 overflow-hidden">
@@ -248,6 +295,7 @@ const Index = () => {
           <NowPlaying 
             currentSong={{...currentSong, currentTime}}
             isPlaying={isPlaying} 
+            isBuffering={isBuffering}
             setIsPlaying={setIsPlaying}
             currentTab={currentTab}
             setCurrentTab={(tab) => {
@@ -303,6 +351,7 @@ const Index = () => {
         <MobilePlayer 
           currentSong={currentSong}
           isPlaying={isPlaying}
+          isBuffering={isBuffering}
           setIsPlaying={setIsPlaying}
           onExpand={expandMobilePlayer}
           progress={progress}

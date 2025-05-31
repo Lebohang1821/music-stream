@@ -25,6 +25,7 @@ interface NowPlayingProps {
   onPrevious?: () => void;
   onNext?: () => void;
   isLoading?: boolean;
+  isBuffering?: boolean;
 }
 
 const navigationItems = [
@@ -60,7 +61,8 @@ export function NowPlaying({
   onVolumeChange,
   onPrevious,
   onNext,
-  isLoading = false
+  isLoading = false,
+  isBuffering = false
 }: NowPlayingProps) {
   const [volume, setVolume] = useState([75]);
   const [isLiked, setIsLiked] = useState(false);
@@ -186,7 +188,7 @@ export function NowPlaying({
               </div>
             </div>
 
-            {/* Controls */}
+            {/* Controls with buffering indicator */}
             <div className="flex items-center justify-between">
               <Button 
                 variant="ghost" 
@@ -211,7 +213,7 @@ export function NowPlaying({
                 className="bg-white text-black hover:bg-white/90 w-8 h-8 rounded-full flex items-center justify-center"
                 disabled={isLoading}
               >
-                {isLoading ? (
+                {isLoading || isBuffering ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : isPlaying ? (
                   <Pause size={16} />

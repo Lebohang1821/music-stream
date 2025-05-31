@@ -17,6 +17,7 @@ interface MobilePlayerProps {
   onPrevious?: () => void;
   onNext?: () => void;
   isLoading?: boolean;
+  isBuffering?: boolean;
 }
 
 export function MobilePlayer({ 
@@ -27,7 +28,8 @@ export function MobilePlayer({
   progress = 0,
   onPrevious,
   onNext,
-  isLoading = false
+  isLoading = false,
+  isBuffering = false
 }: MobilePlayerProps) {
   const handlePlayPauseClick = () => {
     setIsPlaying(!isPlaying);
@@ -73,7 +75,7 @@ export function MobilePlayer({
             className="bg-white text-black hover:bg-white/90 w-8 h-8 rounded-full flex items-center justify-center p-0"
             disabled={isLoading}
           >
-            {isLoading ? (
+            {isLoading || isBuffering ? (
               <Loader2 size={14} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={14} />
