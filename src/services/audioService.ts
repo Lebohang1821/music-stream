@@ -1,4 +1,6 @@
-class AudioService {
+import { createReliableAudioUrl, checkAudioExists } from '@/utils/audioUtils';
+
+class AudioService implements IAudioService {
   private audio: HTMLAudioElement | null = null;
   private currentSong: any = null;
   private queue: any[] = [];
@@ -215,7 +217,42 @@ class AudioService {
   private retryCount = 0;
   private lastAttemptedSong: any = null;
 
-  play(song: any) {
+  // Add a method to handle fetch aborts by validating the audio file first
+  private async validateAudioAndPlay(song: any): Promise<boolean> {
+    // Stop all previous loads
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.src = '';
+      this.audio.load();
+    }
+    
+    // Create a reliable URL
+    const audioUrl = createReliableAudioUrl(song.audioUrl);
+    
+    try {
+      // Create a clean URL for checking
+      const url = new URL(audioUrl, window.location.origin);
+      
+      // Check if the audio file exists
+      const exists = await checkAudioExists(url.toString());
+      if (!exists) {
+        console.error(`Audio file does not exist or is not accessible: ${url.toString()}`);
+        return false;
+      }
+      
+      // File exists, now try to load it
+      this.audio!.src = url.toString();
+      this.audio!.load();
+      
+      // Return success
+      return true;
+    } catch (error) {
+      console.error('Error validating audio:', error);
+      return false;
+    }
+  }
+  
+  async play(song: any) {
     if (!this.audio) return;
     
     // Reset retry count when loading a new song
@@ -234,11 +271,13 @@ class AudioService {
     if (this.currentSong && this.currentSong.id === song.id) {
       if (this.audio.paused) {
         this.shouldBePlayingWhenReady = true;
-        this.audio.play().catch(err => {
+        try {
+          await this.audio.play();
+        } catch (err) {
           console.error('Error playing existing audio:', err);
           this.shouldBePlayingWhenReady = false;
           this.handlePlayError(err, song);
-        });
+        }
       } else {
         this.shouldBePlayingWhenReady = false;
         this.audio.pause();
@@ -268,40 +307,25 @@ class AudioService {
     // Load and prepare to play the new song
     this.currentSong = song;
     
-    // Make the URL absolute and add cache-busting
-    const baseUrl = window.location.origin;
-    let audioUrl: string;
-    
-    // Handle both absolute and relative URLs
-    if (song.audioUrl.startsWith('http')) {
-      audioUrl = song.audioUrl;
-    } else {
-      // For local files in development, use relative paths
-      // In production, use the full URL with origin
-      if (window.location.hostname === 'localhost') {
-        audioUrl = song.audioUrl;
-      } else {
-        // Strip leading slash if present
-        const cleanPath = song.audioUrl.startsWith('/') ? song.audioUrl.substring(1) : song.audioUrl;
-        audioUrl = `${baseUrl}/${cleanPath}`;
-      }
-    }
-    
-    // Add cache-busting query param
-    const urlWithCache = new URL(audioUrl, baseUrl);
-    urlWithCache.searchParams.append('_', Date.now().toString());
-    
+    // Validate and load the audio file with a smaller chunk approach
     try {
-      this.audio.src = urlWithCache.toString();
-      this.audio.load();
+      const isValid = await this.validateAudioAndPlay(song);
       
-      // Set up automatic play when buffered, with audio load error handling
-      if (this.shouldBePlayingWhenReady) {
-        this.audio.play().catch((err) => {
-          console.error('Error in initial playback:', err);
-          this.handlePlayError(err, song);
-        });
+      if (!isValid) {
+        this.handlePlayError(new Error("Audio validation failed"), song);
+        return;
       }
+      
+      // Wait a small amount of time to allow initial buffering
+      setTimeout(() => {
+        if (this.shouldBePlayingWhenReady) {
+          this.audio!.play().catch((err) => {
+            console.error('Error in initial playback:', err);
+            this.handlePlayError(err, song);
+          });
+        }
+      }, 200);
+      
     } catch (err) {
       console.error('Error setting audio source:', err);
       this.handlePlayError(err, song);
