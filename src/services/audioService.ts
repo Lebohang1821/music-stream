@@ -1,4 +1,4 @@
-import { createReliableAudioUrl, checkAudioExists, createSafeAudioUrl, testAudioFile } from '@/utils/audioUtils';
+import { createSafeAudioUrl, testAudioFile } from '@/utils/audioUtils';
 
 class AudioService implements IAudioService {
   private audio: HTMLAudioElement | null = null;
